@@ -21,10 +21,24 @@ const app  = express();
 const PORT = process.env.PORT || 3001;
 const isDev = process.env.NODE_ENV !== 'production';
 
+const allowedOrigins = new Set([
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  process.env.FRONTEND_URL,
+].filter(Boolean));
+
+// Render y otros proxies reversos
+app.set('trust proxy', 1);
+
 // ── Seguridad ─────────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`Origen no permitido por CORS: ${origin}`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -77,9 +91,9 @@ app.use((err, req, res, _next) => {
   });
 });
 
-// ── Arrancar servidor ─────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`
+function startServer() {
+  return app.listen(PORT, '0.0.0.0', () => {
+    console.log(`
 ╔══════════════════════════════════════════╗
 ║           TicketCRM API                  ║
 ║   Desarrollado por Raúl de Jesús Larios  ║
@@ -87,7 +101,13 @@ app.listen(PORT, () => {
 ║  URL:  http://localhost:${PORT}              ║
 ║  Env:  ${(process.env.NODE_ENV || 'development').padEnd(34)}║
 ╚══════════════════════════════════════════╝
-  `);
-});
+    `);
+  });
+}
 
-module.exports = app; // para tests
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = app;
+module.exports.startServer = startServer;

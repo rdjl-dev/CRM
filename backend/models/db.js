@@ -6,14 +6,16 @@
  */
 
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
 const bcrypt = require('bcryptjs');
 
 // ── Usuarios ──────────────────────────────────────────────────────────────────
 const users = [];
 
 // Seed inicial (admin por defecto)
-const seedAdmin = async () => {
-  const hash = await bcrypt.hash('Admin1234!', 12);
+const seedAdmin = () => {
+  const hash = bcrypt.hashSync('Admin1234!', 12);
   users.push({
     id: 'usr_admin_001',
     name: 'Raúl de Jesús Larios',
@@ -33,7 +35,7 @@ const seedAdmin = async () => {
     id: 'usr_agent_001',
     name: 'Laura Martínez',
     email: 'laura@ticketcrm.com',
-    passwordHash: await bcrypt.hash('Agent1234!', 12),
+    passwordHash: bcrypt.hashSync('Agent1234!', 12),
     role: 'agent',
     twoFactorSecret: null,
     twoFactorEnabled: false,
@@ -77,6 +79,75 @@ const comments = [
   { id: 'cmt_003', ticketId: 'tkt_004', authorId: 'usr_agent_001', content: 'El problema está en el callback de Google OAuth. El redirect_uri no coincide con el registrado en Google Cloud Console.', createdAt: new Date('2025-05-14T10:00:00') },
 ];
 
+// ── Persistencia ligera en JSON ──────────────────────────────────────────────
+const USE_PERSISTENCE = process.env.NODE_ENV !== 'test';
+const DATA_FILE = process.env.DB_FILE || path.join(
+  process.env.DATA_DIR || path.join(__dirname, '..', 'data'),
+  'db.json'
+);
+
+const dateFields = {
+  users: ['createdAt', 'resetTokenExpiry'],
+  tickets: ['createdAt', 'updatedAt', 'slaDeadline'],
+  customers: ['createdAt'],
+  comments: ['createdAt'],
+};
+
+const reviveRecord = (record, fields = []) => {
+  if (!record || typeof record !== 'object') return record;
+  const output = { ...record };
+  for (const field of fields) {
+    if (output[field]) {
+      output[field] = new Date(output[field]);
+    }
+  }
+  return output;
+};
+
+const reviveCollections = (state) => ({
+  users: (state.users || []).map((item) => reviveRecord(item, dateFields.users)),
+  tickets: (state.tickets || []).map((item) => reviveRecord(item, dateFields.tickets)),
+  customers: (state.customers || []).map((item) => reviveRecord(item, dateFields.customers)),
+  comments: (state.comments || []).map((item) => reviveRecord(item, dateFields.comments)),
+});
+
+const persistState = () => {
+  if (!USE_PERSISTENCE) return;
+  const dir = path.dirname(DATA_FILE);
+  fs.mkdirSync(dir, { recursive: true });
+  const payload = { users, tickets, customers, comments };
+  fs.writeFileSync(DATA_FILE, JSON.stringify(payload, null, 2), 'utf8');
+};
+
+const loadState = () => {
+  if (!USE_PERSISTENCE) return false;
+  if (!fs.existsSync(DATA_FILE)) return false;
+
+  try {
+    const raw = fs.readFileSync(DATA_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    const loaded = reviveCollections(parsed);
+
+    users.splice(0, users.length, ...loaded.users);
+    tickets.splice(0, tickets.length, ...loaded.tickets);
+    customers.splice(0, customers.length, ...loaded.customers);
+    comments.splice(0, comments.length, ...loaded.comments);
+
+    return true;
+  } catch (err) {
+    console.warn('[DB] No se pudo cargar la persistencia JSON, se usará el seed inicial.', err.message);
+    return false;
+  }
+};
+
+const initializeDb = () => {
+  if (!USE_PERSISTENCE) return;
+  const loaded = loadState();
+  if (!loaded) persistState();
+};
+
+initializeDb();
+
 // ── Helpers de acceso ─────────────────────────────────────────────────────────
 const db = {
   users,
@@ -86,30 +157,33 @@ const db = {
 
   // Users
   findUserById: (id) => users.find(u => u.id === id),
-  findUserByEmail: (email) => users.find(u => u.email.toLowerCase() === email.toLowerCase()),
+  findUserByEmail: (email) => (email ? users.find(u => u.email.toLowerCase() === email.toLowerCase()) : undefined),
   findUserByGoogleId: (googleId) => users.find(u => u.googleId === googleId),
-  findUserByResetToken: (token) => users.find(u => u.resetToken === token && u.resetTokenExpiry > Date.now()),
-  createUser: (data) => { users.push(data); return data; },
+  findUserByResetToken: (token) => users.find(u => u.resetToken === token && u.resetTokenExpiry && u.resetTokenExpiry > Date.now()),
+  createUser: (data) => { users.push(data); persistState(); return data; },
   updateUser: (id, updates) => {
     const idx = users.findIndex(u => u.id === id);
     if (idx === -1) return null;
     users[idx] = { ...users[idx], ...updates };
+    persistState();
     return users[idx];
   },
 
   // Tickets
   findTicketById: (id) => tickets.find(t => t.id === id),
-  createTicket: (data) => { tickets.push(data); return data; },
+  createTicket: (data) => { tickets.push(data); persistState(); return data; },
   updateTicket: (id, updates) => {
     const idx = tickets.findIndex(t => t.id === id);
     if (idx === -1) return null;
     tickets[idx] = { ...tickets[idx], ...updates, updatedAt: new Date() };
+    persistState();
     return tickets[idx];
   },
   deleteTicket: (id) => {
     const idx = tickets.findIndex(t => t.id === id);
     if (idx === -1) return false;
     tickets.splice(idx, 1);
+    persistState();
     return true;
   },
 
@@ -118,7 +192,7 @@ const db = {
 
   // Comments
   getTicketComments: (ticketId) => comments.filter(c => c.ticketId === ticketId),
-  addComment: (data) => { comments.push(data); return data; },
+  addComment: (data) => { comments.push(data); persistState(); return data; },
 };
 
 module.exports = db;
