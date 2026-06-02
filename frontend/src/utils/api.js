@@ -5,8 +5,28 @@
 
 import axios from 'axios'
 
+const LOCAL_API_URL = 'http://localhost:3001'
+const PROD_API_URL = 'https://crm-am6w.onrender.com'
+
+function getApiBaseUrl() {
+  const envUrl = import.meta.env.VITE_API_URL?.trim()
+  if (envUrl) return envUrl.replace(/\/$/, '')
+
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return LOCAL_API_URL
+  }
+
+  return PROD_API_URL
+}
+
+function goToLogin() {
+  if (typeof window === 'undefined') return
+  const basePath = window.location.pathname.replace(/\/$/, '')
+  window.location.replace(`${window.location.origin}${basePath}/#/login`)
+}
+
 const api = axios.create({
-  baseURL: (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api/v1',
+  baseURL: `${getApiBaseUrl()}/api/v1`,
   headers: { 'Content-Type': 'application/json' },
   timeout: 10000,
 })
@@ -25,7 +45,7 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      goToLogin()
     }
     return Promise.reject(err)
   }
