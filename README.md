@@ -97,17 +97,10 @@ git push -u origin main
 
 ## Deploy en producción
 
-### Backend → Railway
-1. Nuevo proyecto en railway.app → "Deploy from GitHub"
-2. Seleccionar carpeta `/backend`
-3. Añadir variables de entorno desde `.env.example`
-4. Railway asigna la URL → copiarla en `BACKEND_URL` del frontend
+### Backend → render
 
-### Frontend → Vercel
-1. `vercel` CLI o import desde vercel.com
-2. Root directory: `frontend`
-3. Build command: `npm run build`
-4. Añadir variables de entorno
+### Frontend → Github Pages
+
 
 ---
 
