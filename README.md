@@ -15,7 +15,7 @@ Desarrollado por **Raúl de Jesús Larios**.
 | Frontend | React 18, Vite, React Router v6, Zustand |
 | Base de datos | SQLite (desarrollo) → PostgreSQL (producción) vía Prisma |
 | Tests | Jest + Supertest (backend) |
-| Deploy | Railway (backend) + Vercel (frontend) |
+| Deploy | Render(backend) + Github Pages(frontend) |
 
 ---
 
